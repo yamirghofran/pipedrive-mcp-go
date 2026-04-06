@@ -2,6 +2,7 @@
 package pipedrive
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,10 +23,12 @@ const UserAgent = "pipedrive-mcp-server/2.0.0 (go)"
 // DefaultBookingFieldKey is the default custom field key for booking details.
 const DefaultBookingFieldKey = "8f4b27fbd9dfc70d2296f23ce76987051ad7324e"
 
-// Client is a Pipedrive API v1 client with rate limiting.
+// Client is a Pipedrive API client with rate limiting.
+// It supports both v1 and v2 API endpoints.
 type Client struct {
 	httpClient      *http.Client
-	baseURL         string
+	baseURL         string // v1 API base URL
+	baseURLV2       string // v2 API base URL
 	apiToken        string
 	limiter         *rate.Limiter
 	bookingFieldKey string
@@ -44,6 +47,7 @@ func NewClient(domain, apiToken string, minInterval time.Duration, maxConcurrent
 			Timeout: 30 * time.Second,
 		},
 		baseURL:         fmt.Sprintf("https://%s/api/v1", domain),
+		baseURLV2:       fmt.Sprintf("https://%s/api/v2", domain),
 		apiToken:        apiToken,
 		limiter:         rate.NewLimiter(rate.Limit(ratePerSecond), maxConcurrent),
 		bookingFieldKey: bookingFieldKey,
@@ -238,6 +242,242 @@ func (c *Client) getList(ctx context.Context, endpoint string, params map[string
 	}
 
 	return result.Data, result.AdditionalData, nil
+}
+
+// PipedriveV2PaginatedResponse is the response envelope for v2 cursor-based pagination.
+type PipedriveV2PaginatedResponse struct {
+	Success        bool            `json:"success"`
+	Data           json.RawMessage `json:"data"`
+	AdditionalData *struct {
+		NextCursor *string `json:"next_cursor"`
+	} `json:"additional_data,omitempty"`
+}
+
+// PaginationDataV2 holds cursor-based pagination metadata for v2 API.
+type PaginationDataV2 struct {
+	NextCursor *string
+}
+
+// getListV2 fetches paginated data from a v2 API endpoint (cursor-based pagination).
+func (c *Client) getListV2(ctx context.Context, endpoint string, params map[string]string) (json.RawMessage, *PaginationDataV2, error) {
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, nil, &PipedriveError{
+			StatusCode: http.StatusTooManyRequests,
+			Message:    "rate limit exceeded, please try again",
+			Detail:     err.Error(),
+		}
+	}
+
+	reqURL := fmt.Sprintf("%s/%s", c.baseURLV2, cleanEndpoint(endpoint))
+	u, err := url.Parse(reqURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid URL: %w", err)
+	}
+
+	q := u.Query()
+	q.Set("api_token", c.apiToken)
+	for k, v := range params {
+		if v != "" {
+			q.Set(k, v)
+		}
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("Accept", "application/json")
+
+	slog.Debug("Pipedrive v2 API request", "method", "GET", "endpoint", endpoint)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, &PipedriveError{
+			StatusCode: 0,
+			Message:    "failed to connect to Pipedrive API",
+			Detail:     sanitizeString(err.Error()),
+		}
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, &PipedriveError{
+			StatusCode: resp.StatusCode,
+			Message:    "failed to read Pipedrive API response",
+			Detail:     err.Error(),
+		}
+	}
+
+	if resp.StatusCode >= 400 {
+		slog.Error("Pipedrive v2 API error", "status", resp.StatusCode, "body", sanitizeString(string(body)))
+		return nil, nil, &PipedriveError{
+			StatusCode: resp.StatusCode,
+			Message:    fmt.Sprintf("Pipedrive API returned status %d", resp.StatusCode),
+			Detail:     sanitizeString(string(body)),
+		}
+	}
+
+	var result PipedriveV2PaginatedResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, nil, &PipedriveError{
+			StatusCode: resp.StatusCode,
+			Message:    "failed to parse Pipedrive API response",
+			Detail:     err.Error(),
+		}
+	}
+
+	if !result.Success {
+		return nil, nil, &PipedriveError{
+			StatusCode: resp.StatusCode,
+			Message:    "Pipedrive API returned unsuccessful response",
+			Detail:     sanitizeString(string(body)),
+		}
+	}
+
+	var pagination *PaginationDataV2
+	if result.AdditionalData != nil {
+		pagination = &PaginationDataV2{
+			NextCursor: result.AdditionalData.NextCursor,
+		}
+	}
+
+	return result.Data, pagination, nil
+}
+
+// getRawV2 fetches a single item from a v2 API endpoint.
+func (c *Client) getRawV2(ctx context.Context, endpoint string, params map[string]string) (json.RawMessage, error) {
+	data, _, err := c.getListV2(ctx, endpoint, params)
+	return data, err
+}
+
+// doWrite performs a write request (POST/PATCH/PUT/DELETE) to the specified base URL.
+func (c *Client) doWrite(ctx context.Context, method, baseURL, endpoint string, body interface{}) (json.RawMessage, error) {
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, &PipedriveError{
+			StatusCode: http.StatusTooManyRequests,
+			Message:    "rate limit exceeded, please try again",
+			Detail:     err.Error(),
+		}
+	}
+
+	reqURL := fmt.Sprintf("%s/%s", baseURL, cleanEndpoint(endpoint))
+
+	var bodyReader io.Reader
+	if body != nil {
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling request body: %w", err)
+		}
+		bodyReader = bytes.NewReader(jsonBody)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add API token as query parameter
+	q := req.URL.Query()
+	q.Set("api_token", c.apiToken)
+	req.URL.RawQuery = q.Encode()
+
+	slog.Debug("Pipedrive API request", "method", method, "endpoint", endpoint)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, &PipedriveError{
+			StatusCode: 0,
+			Message:    "failed to connect to Pipedrive API",
+			Detail:     sanitizeString(err.Error()),
+		}
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, &PipedriveError{
+			StatusCode: resp.StatusCode,
+			Message:    "failed to read Pipedrive API response",
+			Detail:     err.Error(),
+		}
+	}
+
+	if resp.StatusCode >= 400 {
+		slog.Error("Pipedrive API error", "method", method, "status", resp.StatusCode, "body", sanitizeString(string(respBody)))
+		return nil, &PipedriveError{
+			StatusCode: resp.StatusCode,
+			Message:    fmt.Sprintf("Pipedrive API returned status %d", resp.StatusCode),
+			Detail:     sanitizeString(string(respBody)),
+		}
+	}
+
+	// For DELETE requests, the response may not have a standard envelope
+	if method == http.MethodDelete {
+		var result struct {
+			Success bool            `json:"success"`
+			Data    json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			// If we can't parse, just return success
+			return json.RawMessage(`{"success": true}`), nil
+		}
+		return result.Data, nil
+	}
+
+	var result PipedriveResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, &PipedriveError{
+			StatusCode: resp.StatusCode,
+			Message:    "failed to parse Pipedrive API response",
+			Detail:     err.Error(),
+		}
+	}
+
+	if !result.Success {
+		return nil, &PipedriveError{
+			StatusCode: resp.StatusCode,
+			Message:    "Pipedrive API returned unsuccessful response",
+			Detail:     sanitizeString(string(respBody)),
+		}
+	}
+
+	return result.Data, nil
+}
+
+// postV1 performs a POST request to the v1 API.
+func (c *Client) postV1(ctx context.Context, endpoint string, body interface{}) (json.RawMessage, error) {
+	return c.doWrite(ctx, http.MethodPost, c.baseURL, endpoint, body)
+}
+
+// putV1 performs a PUT request to the v1 API.
+func (c *Client) putV1(ctx context.Context, endpoint string, body interface{}) (json.RawMessage, error) {
+	return c.doWrite(ctx, http.MethodPut, c.baseURL, endpoint, body)
+}
+
+// deleteV1 performs a DELETE request to the v1 API.
+func (c *Client) deleteV1(ctx context.Context, endpoint string) (json.RawMessage, error) {
+	return c.doWrite(ctx, http.MethodDelete, c.baseURL, endpoint, nil)
+}
+
+// postV2 performs a POST request to the v2 API.
+func (c *Client) postV2(ctx context.Context, endpoint string, body interface{}) (json.RawMessage, error) {
+	return c.doWrite(ctx, http.MethodPost, c.baseURLV2, endpoint, body)
+}
+
+// patchV2 performs a PATCH request to the v2 API.
+func (c *Client) patchV2(ctx context.Context, endpoint string, body interface{}) (json.RawMessage, error) {
+	return c.doWrite(ctx, http.MethodPatch, c.baseURLV2, endpoint, body)
+}
+
+// deleteV2 performs a DELETE request to the v2 API.
+func (c *Client) deleteV2(ctx context.Context, endpoint string) (json.RawMessage, error) {
+	return c.doWrite(ctx, http.MethodDelete, c.baseURLV2, endpoint, nil)
 }
 
 // BookingFieldKey returns the configured booking field key.

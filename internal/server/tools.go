@@ -75,7 +75,15 @@ type searchAllInput struct {
 	ItemTypes *string `json:"itemTypes,omitempty" jsonschema:"Comma-separated item types: deal, person, organization, product, file, activity, lead"`
 }
 
-// registerTools registers all 15 MCP tools.
+type activityIDInput struct {
+	ActivityID int `json:"activityId" jsonschema:"Pipedrive activity ID,required"`
+}
+
+type noteIDInput struct {
+	NoteID int `json:"noteId" jsonschema:"Pipedrive note ID,required"`
+}
+
+// registerTools registers all MCP tools.
 func registerTools(s *mcp.Server, client *pipedrive.Client) {
 	// Tool 1: get-users
 	mcp.AddTool(s, &mcp.Tool{
@@ -288,5 +296,154 @@ func registerTools(s *mcp.Server, client *pipedrive.Client) {
 			return toolError("Failed to search: %s", pipedrive.SanitizeErrorMessage(err))
 		}
 		return toolSuccessRaw(data)
+	})
+
+	// --- Activity Tools (v2 API) ---
+
+	// Tool 16: get-activities
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get-activities",
+		Description: "Get activities from Pipedrive with flexible filtering by owner, deal, person, organization, or done status. Supports pagination with cursor.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, params pipedrive.GetActivitiesParams) (*mcp.CallToolResult, any, error) {
+		result, err := client.GetActivities(ctx, params)
+		if err != nil {
+			return toolError("Failed to fetch activities: %s", pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccess(result)
+	})
+
+	// Tool 17: get-activity
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get-activity",
+		Description: "Get a specific activity by ID with full details including location, participants, and conference info",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input activityIDInput) (*mcp.CallToolResult, any, error) {
+		data, err := client.GetActivity(ctx, input.ActivityID)
+		if err != nil {
+			return toolError("Failed to fetch activity %d: %s", input.ActivityID, pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccessRaw(data)
+	})
+
+	// Tool 18: add-activity
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "add-activity",
+		Description: "Create a new activity in Pipedrive. Requires a subject. Optionally link to a deal, person, organization, or lead. Set due date, duration, type, and more.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, params pipedrive.AddActivityParams) (*mcp.CallToolResult, any, error) {
+		if params.Subject == nil || *params.Subject == "" {
+			return toolError("Subject is required to create an activity")
+		}
+		data, err := client.AddActivity(ctx, params)
+		if err != nil {
+			return toolError("Failed to create activity: %s", pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccessRaw(data)
+	})
+
+	// Tool 19: update-activity
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "update-activity",
+		Description: "Update an existing activity. Can mark as done, change subject, type, due date, assignee, or any other field.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, params pipedrive.UpdateActivityParams) (*mcp.CallToolResult, any, error) {
+		if params.ID == 0 {
+			return toolError("Activity ID is required to update an activity")
+		}
+		data, err := client.UpdateActivity(ctx, params)
+		if err != nil {
+			return toolError("Failed to update activity %d: %s", params.ID, pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccessRaw(data)
+	})
+
+	// Tool 20: delete-activity
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "delete-activity",
+		Description: "Delete an activity by ID. The activity is marked as deleted and permanently removed after 30 days.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input activityIDInput) (*mcp.CallToolResult, any, error) {
+		data, err := client.DeleteActivity(ctx, input.ActivityID)
+		if err != nil {
+			return toolError("Failed to delete activity %d: %s", input.ActivityID, pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccess(map[string]interface{}{
+			"summary":     fmt.Sprintf("Activity %d deleted", input.ActivityID),
+			"activity_id": input.ActivityID,
+			"deleted":     true,
+			"details":     data,
+		})
+	})
+
+	// --- Note Tools (v1 API) ---
+
+	// Tool 21: get-notes
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get-notes",
+		Description: "Get notes from Pipedrive with flexible filtering by deal, person, organization, user, or lead. Supports pagination.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, params pipedrive.GetNotesParams) (*mcp.CallToolResult, any, error) {
+		result, err := client.GetNotes(ctx, params)
+		if err != nil {
+			return toolError("Failed to fetch notes: %s", pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccess(result)
+	})
+
+	// Tool 22: get-note
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get-note",
+		Description: "Get a specific note by ID with full details including content, associated entities, and creator info",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input noteIDInput) (*mcp.CallToolResult, any, error) {
+		data, err := client.GetNote(ctx, input.NoteID)
+		if err != nil {
+			return toolError("Failed to fetch note %d: %s", input.NoteID, pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccessRaw(data)
+	})
+
+	// Tool 23: add-note
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "add-note",
+		Description: "Create a new note in Pipedrive. Requires content and at least one associated entity (deal, person, organization, lead, or project).",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, params pipedrive.AddNoteParams) (*mcp.CallToolResult, any, error) {
+		if params.Content == "" {
+			return toolError("Content is required to create a note")
+		}
+		if params.DealID == nil && params.PersonID == nil && params.OrgID == nil && params.LeadID == nil && params.ProjectID == nil {
+			return toolError("At least one associated entity (dealId, personId, orgId, leadId, or projectId) is required")
+		}
+		data, err := client.AddNote(ctx, params)
+		if err != nil {
+			return toolError("Failed to create note: %s", pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccessRaw(data)
+	})
+
+	// Tool 24: update-note
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "update-note",
+		Description: "Update an existing note's content or reassign it to a different deal, person, or organization.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, params pipedrive.UpdateNoteParams) (*mcp.CallToolResult, any, error) {
+		if params.ID == 0 {
+			return toolError("Note ID is required to update a note")
+		}
+		data, err := client.UpdateNote(ctx, params)
+		if err != nil {
+			return toolError("Failed to update note %d: %s", params.ID, pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccessRaw(data)
+	})
+
+	// Tool 25: delete-note
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "delete-note",
+		Description: "Delete a note by ID.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, input noteIDInput) (*mcp.CallToolResult, any, error) {
+		data, err := client.DeleteNote(ctx, input.NoteID)
+		if err != nil {
+			return toolError("Failed to delete note %d: %s", input.NoteID, pipedrive.SanitizeErrorMessage(err))
+		}
+		return toolSuccess(map[string]interface{}{
+			"summary": fmt.Sprintf("Note %d deleted", input.NoteID),
+			"note_id": input.NoteID,
+			"deleted": true,
+			"details": data,
+		})
 	})
 }
