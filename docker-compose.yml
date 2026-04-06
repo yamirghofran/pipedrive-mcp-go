@@ -1,0 +1,13 @@
+services:
+  pipedrive-mcp-server:
+    build: .
+    environment:
+      - PIPEDRIVE_API_TOKEN=${PIPEDRIVE_API_TOKEN}
+      - PIPEDRIVE_DOMAIN=${PIPEDRIVE_DOMAIN}
+      - MCP_TRANSPORT=http
+      - MCP_PORT=3000
+      - MCP_HOST=0.0.0.0
+      - MCP_JWT_SECRET=${MCP_JWT_SECRET:-}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
