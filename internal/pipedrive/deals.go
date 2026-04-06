@@ -4,39 +4,36 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 )
 
 // --- Data types for deal-related responses ---
 
-// RawDeal represents a raw deal from the Pipedrive list deals endpoint.
-type RawDeal struct {
-	ID               int           `json:"id"`
-	Title            string        `json:"title"`
-	Value            float64       `json:"value"`
-	Currency         string        `json:"currency"`
-	Status           string        `json:"status"`
-	StageID          int           `json:"stage_id"`
-	PipelineID       int           `json:"pipeline_id"`
-	UserID           json.Number   `json:"user_id"`
-	AddTime          string        `json:"add_time"`
-	UpdateTime       string        `json:"update_time"`
-	LastActivityDate string        `json:"last_activity_date"`
-	CloseTime        string        `json:"close_time"`
-	WonTime          string        `json:"won_time"`
-	LostTime         string        `json:"lost_time"`
-	NotesCount       int           `json:"notes_count"`
-	OrgID            *NestedIDName `json:"org_id"`
-	PersonID         *NestedIDName `json:"person_id"`
-	StageName        string        `json:"stage_name"`    // from search results
-	PipelineName     string        `json:"pipeline_name"` // from search results
-	OwnerName        string        `json:"owner_name"`    // from search results
-	StageOrderNr     int           `json:"stage_order_nr"`
-	// Custom fields stored as raw JSON
-	CustomAttributes json.RawMessage `json:"-"`
+// RawDealV2 represents a deal from the Pipedrive v2 list deals endpoint.
+// The v2 API returns flat IDs instead of nested objects.
+type RawDealV2 struct {
+	ID         int     `json:"id"`
+	Title      string  `json:"title"`
+	OwnerID    int     `json:"owner_id"`
+	PersonID   int     `json:"person_id"`
+	OrgID      int     `json:"org_id"`
+	PipelineID int     `json:"pipeline_id"`
+	StageID    int     `json:"stage_id"`
+	Value      float64 `json:"value"`
+	Currency   string  `json:"currency"`
+	Status     string  `json:"status"`
+	AddTime    string  `json:"add_time"`
+	UpdateTime string  `json:"update_time"`
+	CloseTime  string  `json:"close_time"`
+	WonTime    string  `json:"won_time"`
+	LostTime   string  `json:"lost_time"`
+	NotesCount int     `json:"notes_count"`
+	// Custom fields stored as raw JSON object (40-char hash keys)
+	CustomFields json.RawMessage `json:"custom_fields"`
 }
 
-// NestedIDName represents a nested object with id and name fields.
+// NestedIDName represents a nested object with id and name fields (v1 API format).
 type NestedIDName struct {
 	Value interface{} `json:"value"`
 	Name  string      `json:"name"`
@@ -106,7 +103,7 @@ type DealSummary struct {
 // GetDealsParams holds the parameters for the get-deals tool.
 type GetDealsParams struct {
 	SearchTitle *string  `json:"searchTitle,omitempty" jsonschema:"Search deals by title (partial matches)"`
-	DaysBack    *int     `json:"daysBack,omitempty" jsonschema:"Days back to fetch based on last activity date. Default: 365"`
+	DaysBack    *int     `json:"daysBack,omitempty" jsonschema:"Days back to fetch based on update time. Default: 365"`
 	OwnerID     *int     `json:"ownerId,omitempty" jsonschema:"Filter by owner/user ID"`
 	StageID     *int     `json:"stageId,omitempty" jsonschema:"Filter by stage ID"`
 	Status      *string  `json:"status,omitempty" jsonschema:"Deal status: open, won, lost, or deleted. Default: open"`
@@ -124,7 +121,90 @@ type GetDealsResult struct {
 	Deals          []DealSummary          `json:"deals"`
 }
 
-// GetDeals fetches deals with flexible filtering.
+// dealLookups holds name lookup maps for enriching v2 deal data.
+type dealLookups struct {
+	stageNameMap    map[int]string // stage_id  -> stage name
+	pipelineNameMap map[int]string // pipeline_id -> pipeline name
+	ownerNameMap    map[int]string // owner_id  -> owner name
+}
+
+// fetchDealLookups concurrently fetches pipelines, stages, and users to build
+// name lookup maps used for enriching v2 deal responses.
+func (c *Client) fetchDealLookups(ctx context.Context) *dealLookups {
+	var (
+		stageNameMap    = make(map[int]string)
+		pipelineNameMap = make(map[int]string)
+		ownerNameMap    = make(map[int]string)
+		wg              sync.WaitGroup
+	)
+
+	// Fetch pipelines (v1 API)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		data, err := c.getRaw(ctx, "pipelines", nil)
+		if err != nil {
+			return
+		}
+		var pipelines []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(data, &pipelines); err != nil {
+			return
+		}
+		for _, p := range pipelines {
+			pipelineNameMap[p.ID] = p.Name
+		}
+	}()
+
+	// Fetch stages (v2 API — returns all stages in one call)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		data, _, err := c.getListV2(ctx, "stages", map[string]string{"limit": "500"})
+		if err != nil {
+			return
+		}
+		var stages []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(data, &stages); err != nil {
+			return
+		}
+		for _, s := range stages {
+			stageNameMap[s.ID] = s.Name
+		}
+	}()
+
+	// Fetch users (v1 API)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		data, err := c.getRaw(ctx, "users", nil)
+		if err != nil {
+			return
+		}
+		var users []User
+		if err := json.Unmarshal(data, &users); err != nil {
+			return
+		}
+		for _, u := range users {
+			ownerNameMap[u.ID] = u.Name
+		}
+	}()
+
+	wg.Wait()
+
+	return &dealLookups{
+		stageNameMap:    stageNameMap,
+		pipelineNameMap: pipelineNameMap,
+		ownerNameMap:    ownerNameMap,
+	}
+}
+
+// GetDeals fetches deals with flexible filtering using the v2 API.
 func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDealsResult, error) {
 	// Apply defaults
 	daysBack := 365
@@ -146,7 +226,7 @@ func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDeals
 	var filtersApplied = make(map[string]interface{})
 
 	if params.SearchTitle != nil && *params.SearchTitle != "" {
-		// Search path
+		// Search path (still uses v1 search endpoint)
 		filtersApplied["searchTitle"] = *params.SearchTitle
 		searchResults, err := c.searchDealsRaw(ctx, *params.SearchTitle)
 		if err != nil {
@@ -155,14 +235,24 @@ func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDeals
 
 		dealSummaries = c.filterAndSummarizeSearchResults(searchResults, params, limit)
 	} else {
-		// List path
+		// List path — use v2 API (GET /api/v2/deals)
 		apiParams := map[string]string{
-			"sort":   "last_activity_date DESC",
-			"status": status,
-			"limit":  fmt.Sprintf("%d", limit),
+			"sort_by":        "update_time",
+			"sort_direction": "desc",
+			"limit":          fmt.Sprintf("%d", limit),
 		}
+
+		// Apply status filter server-side
+		if status != "" {
+			apiParams["status"] = status
+		}
+		if status != "open" {
+			filtersApplied["status"] = status
+		}
+
+		// Apply owner filter server-side using v2 parameter name
 		if params.OwnerID != nil {
-			apiParams["user_id"] = fmt.Sprintf("%d", *params.OwnerID)
+			apiParams["owner_id"] = fmt.Sprintf("%d", *params.OwnerID)
 			filtersApplied["ownerId"] = *params.OwnerID
 		}
 		if params.StageID != nil {
@@ -174,16 +264,25 @@ func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDeals
 			filtersApplied["pipelineId"] = *params.PipelineID
 		}
 
-		if status != "open" {
-			filtersApplied["status"] = status
+		// Apply daysBack filter server-side using updated_since parameter
+		if daysBack > 0 {
+			cutoff := time.Now().AddDate(0, 0, -daysBack).UTC().Format(time.RFC3339)
+			apiParams["updated_since"] = cutoff
+			filtersApplied["daysBack"] = daysBack
 		}
 
-		data, _, err := c.getList(ctx, "deals", apiParams)
+		// Request notes_count in the response
+		apiParams["include_fields"] = "notes_count"
+
+		data, _, err := c.getListV2(ctx, "deals", apiParams)
 		if err != nil {
 			return nil, err
 		}
 
-		dealSummaries = c.filterAndSummarizeListedDeals(data, daysBack, params, limit)
+		// Fetch name lookups concurrently for enriching deal data
+		lookups := c.fetchDealLookups(ctx)
+
+		dealSummaries = c.filterAndSummarizeListedDealsV2(data, params, lookups, limit)
 	}
 
 	// Track additional filters
@@ -192,9 +291,6 @@ func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDeals
 	}
 	if params.MaxValue != nil {
 		filtersApplied["maxValue"] = *params.MaxValue
-	}
-	if params.DaysBack != nil {
-		filtersApplied["daysBack"] = *params.DaysBack
 	}
 
 	totalFound := len(dealSummaries)
@@ -322,31 +418,18 @@ func (c *Client) filterAndSummarizeSearchResults(items []RawDealSearchResultItem
 	return results
 }
 
-// filterAndSummarizeListedDeals applies client-side filters to listed deals.
-func (c *Client) filterAndSummarizeListedDeals(data json.RawMessage, daysBack int, params GetDealsParams, limit int) []DealSummary {
-	var rawDeals []json.RawMessage
-	if err := json.Unmarshal(data, &rawDeals); err != nil {
+// filterAndSummarizeListedDealsV2 applies client-side filters to v2 listed deals
+// and enriches them with name lookups.
+func (c *Client) filterAndSummarizeListedDealsV2(data json.RawMessage, params GetDealsParams, lookups *dealLookups, limit int) []DealSummary {
+	var deals []RawDealV2
+	if err := json.Unmarshal(data, &deals); err != nil {
 		return nil
 	}
 
-	cutoff := time.Now().AddDate(0, 0, -daysBack)
 	var results []DealSummary
 
-	for _, raw := range rawDeals {
-		var deal RawDeal
-		if err := json.Unmarshal(raw, &deal); err != nil {
-			continue
-		}
-
-		// Filter by last_activity_date cutoff
-		if deal.LastActivityDate != "" {
-			t, err := time.Parse("2006-01-02", deal.LastActivityDate)
-			if err == nil && t.Before(cutoff) {
-				continue
-			}
-		}
-
-		// Apply min/max value filters
+	for _, deal := range deals {
+		// Apply min/max value filters (client-side)
 		if params.MinValue != nil && deal.Value < *params.MinValue {
 			continue
 		}
@@ -354,60 +437,48 @@ func (c *Client) filterAndSummarizeListedDeals(data json.RawMessage, daysBack in
 			continue
 		}
 
-		// Extract nested names
-		stageName := deal.StageName
-		if stageName == "" {
-			stageName = "Unknown"
+		// Resolve names from lookups
+		stageName := "Unknown"
+		if name, ok := lookups.stageNameMap[deal.StageID]; ok && name != "" {
+			stageName = name
 		}
-		pipelineName := deal.PipelineName
-		if pipelineName == "" {
-			pipelineName = "Unknown"
+		pipelineName := "Unknown"
+		if name, ok := lookups.pipelineNameMap[deal.PipelineID]; ok && name != "" {
+			pipelineName = name
 		}
-		ownerName := deal.OwnerName
-		if ownerName == "" {
-			ownerName = "Unknown"
-		}
-
-		var orgName *string
-		if deal.OrgID != nil && deal.OrgID.GetName() != "" {
-			n := deal.OrgID.GetName()
-			orgName = &n
-		}
-		var personName *string
-		if deal.PersonID != nil && deal.PersonID.GetName() != "" {
-			n := deal.PersonID.GetName()
-			personName = &n
+		ownerName := "Unknown"
+		if name, ok := lookups.ownerNameMap[deal.OwnerID]; ok && name != "" {
+			ownerName = name
 		}
 
 		// Extract booking details from custom fields
 		var bookingDetails *string
-		var rawMap map[string]interface{}
-		if json.Unmarshal(raw, &rawMap) == nil {
-			if v, ok := rawMap[c.bookingFieldKey]; ok {
-				if s, ok := v.(string); ok && s != "" {
-					bookingDetails = &s
+		if deal.CustomFields != nil {
+			var cfMap map[string]interface{}
+			if json.Unmarshal(deal.CustomFields, &cfMap) == nil {
+				if v, ok := cfMap[c.bookingFieldKey]; ok {
+					if s, ok := v.(string); ok && s != "" {
+						bookingDetails = &s
+					}
 				}
 			}
 		}
 
 		summary := DealSummary{
-			ID:               deal.ID,
-			Title:            deal.Title,
-			Value:            deal.Value,
-			Currency:         deal.Currency,
-			Status:           deal.Status,
-			StageName:        stageName,
-			PipelineName:     pipelineName,
-			OwnerName:        ownerName,
-			OrganizationName: orgName,
-			PersonName:       personName,
-			AddTime:          deal.AddTime,
-			LastActivityDate: deal.LastActivityDate,
-			CloseTime:        deal.CloseTime,
-			WonTime:          deal.WonTime,
-			LostTime:         deal.LostTime,
-			NotesCount:       deal.NotesCount,
-			BookingDetails:   bookingDetails,
+			ID:             deal.ID,
+			Title:          deal.Title,
+			Value:          deal.Value,
+			Currency:       deal.Currency,
+			Status:         deal.Status,
+			StageName:      stageName,
+			PipelineName:   pipelineName,
+			OwnerName:      ownerName,
+			AddTime:        deal.AddTime,
+			CloseTime:      deal.CloseTime,
+			WonTime:        deal.WonTime,
+			LostTime:       deal.LostTime,
+			NotesCount:     deal.NotesCount,
+			BookingDetails: bookingDetails,
 		}
 
 		if len(results) >= limit {
