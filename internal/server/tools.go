@@ -103,7 +103,7 @@ func registerTools(s *mcp.Server, client *pipedrive.Client) {
 	// Tool 2: get-deals
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get-deals",
-		Description: "Get deals from Pipedrive with flexible filtering options including search by title, date range, owner, stage, status, and more. Use get-users tool first to find owner IDs.",
+		Description: "List and filter deals from Pipedrive. This is the primary tool for fetching deals — use it when the user asks to see deals, list deals, or get an overview of their pipeline. Supports filtering by title search, status (open/won/lost/deleted), owner, stage, pipeline, value range, and date range. By default returns all non-deleted deals updated in the last 365 days. Use get-users tool first to find owner IDs.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, params pipedrive.GetDealsParams) (*mcp.CallToolResult, any, error) {
 		result, err := client.GetDeals(ctx, params)
 		if err != nil {
@@ -273,7 +273,7 @@ func registerTools(s *mcp.Server, client *pipedrive.Client) {
 	// Tool 14: search-leads
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "search-leads",
-		Description: "Search leads by term",
+		Description: "Search Pipedrive leads (not deals) by term. Requires a search term of at least 2 characters. Do NOT use this tool to list or fetch deals — use get-deals instead.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, input searchInput) (*mcp.CallToolResult, any, error) {
 		data, err := client.SearchLeads(ctx, input.Term)
 		if err != nil {

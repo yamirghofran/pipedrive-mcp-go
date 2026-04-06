@@ -106,7 +106,7 @@ type GetDealsParams struct {
 	DaysBack    *int     `json:"daysBack,omitempty" jsonschema:"Days back to fetch based on update time. Default: 365"`
 	OwnerID     *int     `json:"ownerId,omitempty" jsonschema:"Filter by owner/user ID"`
 	StageID     *int     `json:"stageId,omitempty" jsonschema:"Filter by stage ID"`
-	Status      *string  `json:"status,omitempty" jsonschema:"Deal status: open, won, lost, or deleted. Default: open"`
+	Status      *string  `json:"status,omitempty" jsonschema:"Deal status: open, won, lost, or deleted. Default: returns all non-deleted deals"`
 	PipelineID  *int     `json:"pipelineId,omitempty" jsonschema:"Filter by pipeline ID"`
 	MinValue    *float64 `json:"minValue,omitempty" jsonschema:"Minimum deal value"`
 	MaxValue    *float64 `json:"maxValue,omitempty" jsonschema:"Maximum deal value"`
@@ -211,7 +211,9 @@ func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDeals
 	if params.DaysBack != nil {
 		daysBack = *params.DaysBack
 	}
-	status := "open"
+	// Default to empty string so the API returns all non-deleted deals.
+	// The v2 API docs state: "If omitted, all not deleted deals are returned."
+	status := ""
 	if params.Status != nil && *params.Status != "" {
 		status = *params.Status
 	}
@@ -245,8 +247,6 @@ func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDeals
 		// Apply status filter server-side
 		if status != "" {
 			apiParams["status"] = status
-		}
-		if status != "open" {
 			filtersApplied["status"] = status
 		}
 
