@@ -8,7 +8,7 @@ import (
 
 const (
 	ServerName    = "pipedrive-mcp-server"
-	ServerVersion = "2.0.0"
+	ServerVersion = "3.0.0"
 )
 
 // NewServer creates a new MCP server with all Pipedrive tools and prompts registered.
