@@ -19,7 +19,7 @@ import (
 )
 
 // UserAgent is the User-Agent header sent with all Pipedrive API requests.
-const UserAgent = "pipedrive-mcp-server/2.0.0 (go)"
+const UserAgent = "pipedrive-mcp-server/3.1.0 (go)"
 
 // DefaultBookingFieldKey is the default custom field key for booking details.
 const DefaultBookingFieldKey = "8f4b27fbd9dfc70d2296f23ce76987051ad7324e"
