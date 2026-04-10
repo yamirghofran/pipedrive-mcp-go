@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -566,4 +567,117 @@ func floatToStr(f *float64) string {
 // ensure trailing slash consistency
 func cleanEndpoint(ep string) string {
 	return strings.TrimPrefix(ep, "/")
+}
+
+// --- Flexible parsing helpers for MCP tool arguments ---
+//
+// MCP clients may send numeric values as strings (e.g. "123" instead of 123)
+// or the string "null" instead of JSON null. These helpers accept any type
+// and convert accordingly, making tool inputs more resilient.
+
+// ParseIntField parses a flexible integer value from an any-typed MCP argument.
+// Accepts: nil, float64 (JSON number), int, or a string like "123".
+// The string "null" or "" is treated as nil (not provided).
+func ParseIntField(v any) (*int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	switch val := v.(type) {
+	case float64:
+		i := int(val)
+		return &i, nil
+	case int:
+		return &val, nil
+	case string:
+		if val == "" || val == "null" {
+			return nil, nil
+		}
+		i, err := strconv.Atoi(val)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse %q as integer", val)
+		}
+		return &i, nil
+	default:
+		return nil, fmt.Errorf("expected integer, got %T", v)
+	}
+}
+
+// ParseFloatField parses a flexible float64 value from an any-typed MCP argument.
+// Accepts: nil, float64, int, or a string like "99.5".
+// The string "null" or "" is treated as nil.
+func ParseFloatField(v any) (*float64, error) {
+	if v == nil {
+		return nil, nil
+	}
+	switch val := v.(type) {
+	case float64:
+		return &val, nil
+	case int:
+		f := float64(val)
+		return &f, nil
+	case string:
+		if val == "" || val == "null" {
+			return nil, nil
+		}
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse %q as number", val)
+		}
+		return &f, nil
+	default:
+		return nil, fmt.Errorf("expected number, got %T", v)
+	}
+}
+
+// ParseStringField parses a flexible string value from an any-typed MCP argument.
+// Accepts: nil, string. The string "null" is treated as nil (not provided).
+func ParseStringField(v any) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	switch val := v.(type) {
+	case string:
+		if val == "null" {
+			return nil, nil
+		}
+		return &val, nil
+	default:
+		return nil, fmt.Errorf("expected string, got %T", v)
+	}
+}
+
+// ParseBoolField parses a flexible bool value from an any-typed MCP argument.
+// Accepts: nil, bool, or a string like "true"/"false".
+// The string "null" or "" is treated as nil.
+func ParseBoolField(v any) (*bool, error) {
+	if v == nil {
+		return nil, nil
+	}
+	switch val := v.(type) {
+	case bool:
+		return &val, nil
+	case string:
+		if val == "" || val == "null" {
+			return nil, nil
+		}
+		b, err := strconv.ParseBool(val)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse %q as boolean", val)
+		}
+		return &b, nil
+	default:
+		return nil, fmt.Errorf("expected boolean, got %T", v)
+	}
+}
+
+// IsNilValue checks whether an any-typed MCP argument represents a missing/empty value.
+// Returns true for nil, the string "", and the string "null".
+func IsNilValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	if s, ok := v.(string); ok && (s == "" || s == "null") {
+		return true
+	}
+	return false
 }

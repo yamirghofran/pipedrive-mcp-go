@@ -329,7 +329,8 @@ func registerTools(s *mcp.Server, client *pipedrive.Client) {
 		Name:        "add-activity",
 		Description: "Create a new activity in Pipedrive. Requires a subject. Optionally link to a deal, person, organization, or lead. Set due date, duration, type, and more.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, params pipedrive.AddActivityParams) (*mcp.CallToolResult, any, error) {
-		if params.Subject == nil || *params.Subject == "" {
+		subject, _ := pipedrive.ParseStringField(params.Subject)
+		if subject == nil || *subject == "" {
 			return toolError("Subject is required to create an activity")
 		}
 		data, err := client.AddActivity(ctx, params)
@@ -405,7 +406,7 @@ func registerTools(s *mcp.Server, client *pipedrive.Client) {
 		if params.Content == "" {
 			return toolError("Content is required to create a note")
 		}
-		if params.DealID == nil && params.PersonID == nil && params.OrgID == nil && params.LeadID == nil && params.ProjectID == nil {
+		if pipedrive.IsNilValue(params.DealID) && pipedrive.IsNilValue(params.PersonID) && pipedrive.IsNilValue(params.OrgID) && pipedrive.IsNilValue(params.LeadID) && pipedrive.IsNilValue(params.ProjectID) {
 			return toolError("At least one associated entity (dealId, personId, orgId, leadId, or projectId) is required")
 		}
 		data, err := client.AddNote(ctx, params)

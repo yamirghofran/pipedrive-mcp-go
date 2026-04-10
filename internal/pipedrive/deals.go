@@ -101,16 +101,17 @@ type DealSummary struct {
 }
 
 // GetDealsParams holds the parameters for the get-deals tool.
+// Uses 'any' for ID fields to flexibly accept integers, strings, or null from MCP clients.
 type GetDealsParams struct {
-	SearchTitle *string  `json:"searchTitle,omitempty" jsonschema:"Search deals by title (partial matches)"`
-	DaysBack    *int     `json:"daysBack,omitempty" jsonschema:"Days back to fetch based on update time. Default: 365"`
-	OwnerID     *int     `json:"ownerId,omitempty" jsonschema:"Filter by owner/user ID"`
-	StageID     *int     `json:"stageId,omitempty" jsonschema:"Filter by stage ID"`
-	Status      *string  `json:"status,omitempty" jsonschema:"Deal status: open, won, lost, or deleted. Default: returns all non-deleted deals"`
-	PipelineID  *int     `json:"pipelineId,omitempty" jsonschema:"Filter by pipeline ID"`
-	MinValue    *float64 `json:"minValue,omitempty" jsonschema:"Minimum deal value"`
-	MaxValue    *float64 `json:"maxValue,omitempty" jsonschema:"Maximum deal value"`
-	Limit       *int     `json:"limit,omitempty" jsonschema:"Maximum deals to return (capped at 500). Default: 500"`
+	SearchTitle any `json:"searchTitle,omitempty" jsonschema:"Search deals by title (partial matches)"`
+	DaysBack    any `json:"daysBack,omitempty" jsonschema:"Days back to fetch based on update time. Default: 365"`
+	OwnerID     any `json:"ownerId,omitempty" jsonschema:"Filter by owner/user ID"`
+	StageID     any `json:"stageId,omitempty" jsonschema:"Filter by stage ID"`
+	Status      any `json:"status,omitempty" jsonschema:"Deal status: open, won, lost, or deleted. Default: returns all non-deleted deals"`
+	PipelineID  any `json:"pipelineId,omitempty" jsonschema:"Filter by pipeline ID"`
+	MinValue    any `json:"minValue,omitempty" jsonschema:"Minimum deal value"`
+	MaxValue    any `json:"maxValue,omitempty" jsonschema:"Maximum deal value"`
+	Limit       any `json:"limit,omitempty" jsonschema:"Maximum deals to return (capped at 500). Default: 500"`
 }
 
 // GetDealsResult is the response for the get-deals tool.
@@ -208,29 +209,27 @@ func (c *Client) fetchDealLookups(ctx context.Context) *dealLookups {
 func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDealsResult, error) {
 	// Apply defaults
 	daysBack := 365
-	if params.DaysBack != nil {
-		daysBack = *params.DaysBack
+	if v, err := ParseIntField(params.DaysBack); err == nil && v != nil {
+		daysBack = *v
 	}
 	// Default to empty string so the API returns all non-deleted deals.
 	// The v2 API docs state: "If omitted, all not deleted deals are returned."
 	status := ""
-	if params.Status != nil && *params.Status != "" {
-		status = *params.Status
+	if v, err := ParseStringField(params.Status); err == nil && v != nil && *v != "" {
+		status = *v
 	}
 	limit := 500
-	if params.Limit != nil {
-		if *params.Limit < 500 {
-			limit = *params.Limit
-		}
+	if v, err := ParseIntField(params.Limit); err == nil && v != nil && *v < 500 {
+		limit = *v
 	}
 
 	var dealSummaries []DealSummary
 	var filtersApplied = make(map[string]interface{})
 
-	if params.SearchTitle != nil && *params.SearchTitle != "" {
+	if searchTitle, _ := ParseStringField(params.SearchTitle); searchTitle != nil && *searchTitle != "" {
 		// Search path (still uses v1 search endpoint)
-		filtersApplied["searchTitle"] = *params.SearchTitle
-		searchResults, err := c.searchDealsRaw(ctx, *params.SearchTitle)
+		filtersApplied["searchTitle"] = *searchTitle
+		searchResults, err := c.searchDealsRaw(ctx, *searchTitle)
 		if err != nil {
 			return nil, err
 		}
@@ -251,17 +250,17 @@ func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDeals
 		}
 
 		// Apply owner filter server-side using v2 parameter name
-		if params.OwnerID != nil {
-			apiParams["owner_id"] = fmt.Sprintf("%d", *params.OwnerID)
-			filtersApplied["ownerId"] = *params.OwnerID
+		if v, err := ParseIntField(params.OwnerID); err == nil && v != nil {
+			apiParams["owner_id"] = fmt.Sprintf("%d", *v)
+			filtersApplied["ownerId"] = *v
 		}
-		if params.StageID != nil {
-			apiParams["stage_id"] = fmt.Sprintf("%d", *params.StageID)
-			filtersApplied["stageId"] = *params.StageID
+		if v, err := ParseIntField(params.StageID); err == nil && v != nil {
+			apiParams["stage_id"] = fmt.Sprintf("%d", *v)
+			filtersApplied["stageId"] = *v
 		}
-		if params.PipelineID != nil {
-			apiParams["pipeline_id"] = fmt.Sprintf("%d", *params.PipelineID)
-			filtersApplied["pipelineId"] = *params.PipelineID
+		if v, err := ParseIntField(params.PipelineID); err == nil && v != nil {
+			apiParams["pipeline_id"] = fmt.Sprintf("%d", *v)
+			filtersApplied["pipelineId"] = *v
 		}
 
 		// Apply daysBack filter server-side using updated_since parameter
@@ -286,11 +285,11 @@ func (c *Client) GetDeals(ctx context.Context, params GetDealsParams) (*GetDeals
 	}
 
 	// Track additional filters
-	if params.MinValue != nil {
-		filtersApplied["minValue"] = *params.MinValue
+	if v, err := ParseFloatField(params.MinValue); err == nil && v != nil {
+		filtersApplied["minValue"] = *v
 	}
-	if params.MaxValue != nil {
-		filtersApplied["maxValue"] = *params.MaxValue
+	if v, err := ParseFloatField(params.MaxValue); err == nil && v != nil {
+		filtersApplied["maxValue"] = *v
 	}
 
 	totalFound := len(dealSummaries)
@@ -338,35 +337,43 @@ func (c *Client) searchDealsRaw(ctx context.Context, term string) ([]RawDealSear
 func (c *Client) filterAndSummarizeSearchResults(items []RawDealSearchResultItem, params GetDealsParams, limit int) []DealSummary {
 	var results []DealSummary
 
+	// Pre-parse flexible params for use in the loop
+	ownerID, _ := ParseIntField(params.OwnerID)
+	statusVal, _ := ParseStringField(params.Status)
+	stageID, _ := ParseIntField(params.StageID)
+	pipelineID, _ := ParseIntField(params.PipelineID)
+	minValue, _ := ParseFloatField(params.MinValue)
+	maxValue, _ := ParseFloatField(params.MaxValue)
+
 	for _, item := range items {
 		// Apply owner filter
-		if params.OwnerID != nil {
+		if ownerID != nil {
 			uid, _ := item.UserID.Int64()
-			if int(uid) != *params.OwnerID {
+			if int(uid) != *ownerID {
 				continue
 			}
 		}
 
 		// Apply status filter
-		if params.Status != nil && *params.Status != "" && item.Status != *params.Status {
+		if statusVal != nil && *statusVal != "" && item.Status != *statusVal {
 			continue
 		}
 
 		// Apply stage filter
-		if params.StageID != nil && item.StageID != *params.StageID {
+		if stageID != nil && item.StageID != *stageID {
 			continue
 		}
 
 		// Apply pipeline filter
-		if params.PipelineID != nil && item.PipelineID != *params.PipelineID {
+		if pipelineID != nil && item.PipelineID != *pipelineID {
 			continue
 		}
 
 		// Apply min/max value filters
-		if params.MinValue != nil && item.Value < *params.MinValue {
+		if minValue != nil && item.Value < *minValue {
 			continue
 		}
-		if params.MaxValue != nil && item.Value > *params.MaxValue {
+		if maxValue != nil && item.Value > *maxValue {
 			continue
 		}
 
@@ -426,14 +433,18 @@ func (c *Client) filterAndSummarizeListedDealsV2(data json.RawMessage, params Ge
 		return nil
 	}
 
+	// Pre-parse flexible params for use in the loop
+	minValue, _ := ParseFloatField(params.MinValue)
+	maxValue, _ := ParseFloatField(params.MaxValue)
+
 	var results []DealSummary
 
 	for _, deal := range deals {
 		// Apply min/max value filters (client-side)
-		if params.MinValue != nil && deal.Value < *params.MinValue {
+		if minValue != nil && deal.Value < *minValue {
 			continue
 		}
-		if params.MaxValue != nil && deal.Value > *params.MaxValue {
+		if maxValue != nil && deal.Value > *maxValue {
 			continue
 		}
 

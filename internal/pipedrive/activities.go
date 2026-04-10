@@ -73,62 +73,65 @@ type ActivityAttendee struct {
 // --- Input parameter types ---
 
 // GetActivitiesParams holds the parameters for listing activities.
+// Uses 'any' for ID fields to flexibly accept integers, strings, or null from MCP clients.
 type GetActivitiesParams struct {
-	OwnerID       *int    `json:"ownerId,omitempty" jsonschema:"Filter by owner/user ID"`
-	DealID        *int    `json:"dealId,omitempty" jsonschema:"Filter by deal ID"`
-	LeadID        *string `json:"leadId,omitempty" jsonschema:"Filter by lead ID"`
-	PersonID      *int    `json:"personId,omitempty" jsonschema:"Filter by person ID"`
-	OrgID         *int    `json:"orgId,omitempty" jsonschema:"Filter by organization ID"`
-	Done          *bool   `json:"done,omitempty" jsonschema:"Filter by done status (true=done, false=not done)"`
-	SortBy        *string `json:"sortBy,omitempty" jsonschema:"Sort field: id, update_time, add_time, due_date. Default: id"`
-	SortDirection *string `json:"sortDirection,omitempty" jsonschema:"Sort direction: asc or desc. Default: asc"`
-	Limit         *int    `json:"limit,omitempty" jsonschema:"Maximum activities to return (capped at 500). Default: 100"`
-	Cursor        *string `json:"cursor,omitempty" jsonschema:"Pagination cursor for next page"`
+	OwnerID       any `json:"ownerId,omitempty" jsonschema:"Filter by owner/user ID"`
+	DealID        any `json:"dealId,omitempty" jsonschema:"Filter by deal ID"`
+	LeadID        any `json:"leadId,omitempty" jsonschema:"Filter by lead ID"`
+	PersonID      any `json:"personId,omitempty" jsonschema:"Filter by person ID"`
+	OrgID         any `json:"orgId,omitempty" jsonschema:"Filter by organization ID"`
+	Done          any `json:"done,omitempty" jsonschema:"Filter by done status (true=done, false=not done)"`
+	SortBy        any `json:"sortBy,omitempty" jsonschema:"Sort field: id, update_time, add_time, due_date. Default: id"`
+	SortDirection any `json:"sortDirection,omitempty" jsonschema:"Sort direction: asc or desc. Default: asc"`
+	Limit         any `json:"limit,omitempty" jsonschema:"Maximum activities to return (capped at 500). Default: 100"`
+	Cursor        any `json:"cursor,omitempty" jsonschema:"Pagination cursor for next page"`
 }
 
 // AddActivityParams holds the parameters for creating an activity.
+// Uses 'any' for ID fields to flexibly accept integers, strings, or null from MCP clients.
 type AddActivityParams struct {
-	Subject           *string               `json:"subject" jsonschema:"The subject of the activity,required"`
-	Type              *string               `json:"type,omitempty" jsonschema:"The type of the activity (e.g. call, meeting, task)"`
-	OwnerID           *int                  `json:"ownerId,omitempty" jsonschema:"ID of the user who owns the activity"`
-	DealID            *int                  `json:"dealId,omitempty" jsonschema:"ID of the deal to link"`
-	LeadID            *string               `json:"leadId,omitempty" jsonschema:"ID of the lead to link"`
-	PersonID          *int                  `json:"personId,omitempty" jsonschema:"ID of the person to link"`
-	OrgID             *int                  `json:"orgId,omitempty" jsonschema:"ID of the organization to link"`
-	ProjectID         *int                  `json:"projectId,omitempty" jsonschema:"ID of the project to link"`
-	DueDate           *string               `json:"dueDate,omitempty" jsonschema:"Due date in YYYY-MM-DD format"`
-	DueTime           *string               `json:"dueTime,omitempty" jsonschema:"Due time in HH:MM:SS format"`
-	Duration          *string               `json:"duration,omitempty" jsonschema:"Duration in HH:MM:SS format"`
-	Busy              *bool                 `json:"busy,omitempty" jsonschema:"Whether the activity marks the assignee as busy"`
-	Done              *bool                 `json:"done,omitempty" jsonschema:"Whether the activity is marked as done"`
+	Subject           any                   `json:"subject" jsonschema:"The subject of the activity,required"`
+	Type              any                   `json:"type,omitempty" jsonschema:"The type of the activity (e.g. call, meeting, task)"`
+	OwnerID           any                   `json:"ownerId,omitempty" jsonschema:"ID of the user who owns the activity"`
+	DealID            any                   `json:"dealId,omitempty" jsonschema:"ID of the deal to link"`
+	LeadID            any                   `json:"leadId,omitempty" jsonschema:"ID of the lead to link"`
+	PersonID          any                   `json:"personId,omitempty" jsonschema:"ID of the person to link"`
+	OrgID             any                   `json:"orgId,omitempty" jsonschema:"ID of the organization to link"`
+	ProjectID         any                   `json:"projectId,omitempty" jsonschema:"ID of the project to link"`
+	DueDate           any                   `json:"dueDate,omitempty" jsonschema:"Due date in YYYY-MM-DD format"`
+	DueTime           any                   `json:"dueTime,omitempty" jsonschema:"Due time in HH:MM:SS format"`
+	Duration          any                   `json:"duration,omitempty" jsonschema:"Duration in HH:MM:SS format"`
+	Busy              any                   `json:"busy,omitempty" jsonschema:"Whether the activity marks the assignee as busy"`
+	Done              any                   `json:"done,omitempty" jsonschema:"Whether the activity is marked as done"`
 	Location          *ActivityLocation     `json:"location,omitempty" jsonschema:"Location details"`
 	Participants      []ActivityParticipant `json:"participants,omitempty" jsonschema:"Participants (array of {person_id, primary})"`
-	PublicDescription *string               `json:"publicDescription,omitempty" jsonschema:"Public description of the activity"`
-	Priority          *int                  `json:"priority,omitempty" jsonschema:"Priority of the activity"`
-	Note              *string               `json:"note,omitempty" jsonschema:"Note content for the activity"`
+	PublicDescription any                   `json:"publicDescription,omitempty" jsonschema:"Public description of the activity"`
+	Priority          any                   `json:"priority,omitempty" jsonschema:"Priority of the activity"`
+	Note              any                   `json:"note,omitempty" jsonschema:"Note content for the activity"`
 }
 
 // UpdateActivityParams holds the parameters for updating an activity.
+// Uses 'any' for ID fields to flexibly accept integers, strings, or null from MCP clients.
 type UpdateActivityParams struct {
 	ID                int                   `json:"-"`
-	Subject           *string               `json:"subject,omitempty" jsonschema:"The subject of the activity"`
-	Type              *string               `json:"type,omitempty" jsonschema:"The type of the activity"`
-	OwnerID           *int                  `json:"ownerId,omitempty" jsonschema:"ID of the user who owns the activity"`
-	DealID            *int                  `json:"dealId,omitempty" jsonschema:"ID of the deal to link"`
-	LeadID            *string               `json:"leadId,omitempty" jsonschema:"ID of the lead to link"`
-	PersonID          *int                  `json:"personId,omitempty" jsonschema:"ID of the person to link"`
-	OrgID             *int                  `json:"orgId,omitempty" jsonschema:"ID of the organization to link"`
-	ProjectID         *int                  `json:"projectId,omitempty" jsonschema:"ID of the project to link"`
-	DueDate           *string               `json:"dueDate,omitempty" jsonschema:"Due date in YYYY-MM-DD format"`
-	DueTime           *string               `json:"dueTime,omitempty" jsonschema:"Due time in HH:MM:SS format"`
-	Duration          *string               `json:"duration,omitempty" jsonschema:"Duration in HH:MM:SS format"`
-	Busy              *bool                 `json:"busy,omitempty" jsonschema:"Whether the activity marks the assignee as busy"`
-	Done              *bool                 `json:"done,omitempty" jsonschema:"Whether the activity is marked as done"`
+	Subject           any                   `json:"subject,omitempty" jsonschema:"The subject of the activity"`
+	Type              any                   `json:"type,omitempty" jsonschema:"The type of the activity"`
+	OwnerID           any                   `json:"ownerId,omitempty" jsonschema:"ID of the user who owns the activity"`
+	DealID            any                   `json:"dealId,omitempty" jsonschema:"ID of the deal to link"`
+	LeadID            any                   `json:"leadId,omitempty" jsonschema:"ID of the lead to link"`
+	PersonID          any                   `json:"personId,omitempty" jsonschema:"ID of the person to link"`
+	OrgID             any                   `json:"orgId,omitempty" jsonschema:"ID of the organization to link"`
+	ProjectID         any                   `json:"projectId,omitempty" jsonschema:"ID of the project to link"`
+	DueDate           any                   `json:"dueDate,omitempty" jsonschema:"Due date in YYYY-MM-DD format"`
+	DueTime           any                   `json:"dueTime,omitempty" jsonschema:"Due time in HH:MM:SS format"`
+	Duration          any                   `json:"duration,omitempty" jsonschema:"Duration in HH:MM:SS format"`
+	Busy              any                   `json:"busy,omitempty" jsonschema:"Whether the activity marks the assignee as busy"`
+	Done              any                   `json:"done,omitempty" jsonschema:"Whether the activity is marked as done"`
 	Location          *ActivityLocation     `json:"location,omitempty" jsonschema:"Location details"`
 	Participants      []ActivityParticipant `json:"participants,omitempty" jsonschema:"Participants (array of {person_id, primary})"`
-	PublicDescription *string               `json:"publicDescription,omitempty" jsonschema:"Public description of the activity"`
-	Priority          *int                  `json:"priority,omitempty" jsonschema:"Priority of the activity"`
-	Note              *string               `json:"note,omitempty" jsonschema:"Note content for the activity"`
+	PublicDescription any                   `json:"publicDescription,omitempty" jsonschema:"Public description of the activity"`
+	Priority          any                   `json:"priority,omitempty" jsonschema:"Priority of the activity"`
+	Note              any                   `json:"note,omitempty" jsonschema:"Note content for the activity"`
 }
 
 // GetActivitiesResult is the result for the get-activities tool.
@@ -144,35 +147,55 @@ type GetActivitiesResult struct {
 func (c *Client) GetActivities(ctx context.Context, params GetActivitiesParams) (*GetActivitiesResult, error) {
 	apiParams := make(map[string]string)
 
-	if params.OwnerID != nil {
-		apiParams["owner_id"] = fmt.Sprintf("%d", *params.OwnerID)
+	if v, err := ParseIntField(params.OwnerID); err != nil {
+		return nil, fmt.Errorf("ownerId: %w", err)
+	} else if v != nil {
+		apiParams["owner_id"] = fmt.Sprintf("%d", *v)
 	}
-	if params.DealID != nil {
-		apiParams["deal_id"] = fmt.Sprintf("%d", *params.DealID)
+	if v, err := ParseIntField(params.DealID); err != nil {
+		return nil, fmt.Errorf("dealId: %w", err)
+	} else if v != nil {
+		apiParams["deal_id"] = fmt.Sprintf("%d", *v)
 	}
-	if params.LeadID != nil {
-		apiParams["lead_id"] = *params.LeadID
+	if v, err := ParseStringField(params.LeadID); err != nil {
+		return nil, fmt.Errorf("leadId: %w", err)
+	} else if v != nil {
+		apiParams["lead_id"] = *v
 	}
-	if params.PersonID != nil {
-		apiParams["person_id"] = fmt.Sprintf("%d", *params.PersonID)
+	if v, err := ParseIntField(params.PersonID); err != nil {
+		return nil, fmt.Errorf("personId: %w", err)
+	} else if v != nil {
+		apiParams["person_id"] = fmt.Sprintf("%d", *v)
 	}
-	if params.OrgID != nil {
-		apiParams["org_id"] = fmt.Sprintf("%d", *params.OrgID)
+	if v, err := ParseIntField(params.OrgID); err != nil {
+		return nil, fmt.Errorf("orgId: %w", err)
+	} else if v != nil {
+		apiParams["org_id"] = fmt.Sprintf("%d", *v)
 	}
-	if params.Done != nil {
-		apiParams["done"] = fmt.Sprintf("%t", *params.Done)
+	if v, err := ParseBoolField(params.Done); err != nil {
+		return nil, fmt.Errorf("done: %w", err)
+	} else if v != nil {
+		apiParams["done"] = fmt.Sprintf("%t", *v)
 	}
-	if params.SortBy != nil {
-		apiParams["sort_by"] = *params.SortBy
+	if v, err := ParseStringField(params.SortBy); err != nil {
+		return nil, fmt.Errorf("sortBy: %w", err)
+	} else if v != nil {
+		apiParams["sort_by"] = *v
 	}
-	if params.SortDirection != nil {
-		apiParams["sort_direction"] = *params.SortDirection
+	if v, err := ParseStringField(params.SortDirection); err != nil {
+		return nil, fmt.Errorf("sortDirection: %w", err)
+	} else if v != nil {
+		apiParams["sort_direction"] = *v
 	}
-	if params.Limit != nil {
-		apiParams["limit"] = fmt.Sprintf("%d", *params.Limit)
+	if v, err := ParseIntField(params.Limit); err != nil {
+		return nil, fmt.Errorf("limit: %w", err)
+	} else if v != nil {
+		apiParams["limit"] = fmt.Sprintf("%d", *v)
 	}
-	if params.Cursor != nil && *params.Cursor != "" {
-		apiParams["cursor"] = *params.Cursor
+	if v, err := ParseStringField(params.Cursor); err != nil {
+		return nil, fmt.Errorf("cursor: %w", err)
+	} else if v != nil && *v != "" {
+		apiParams["cursor"] = *v
 	}
 
 	data, pagination, err := c.getListV2(ctx, "activities", apiParams)
@@ -225,44 +248,44 @@ func (c *Client) DeleteActivity(ctx context.Context, activityID int) (json.RawMe
 // buildActivityRequestBody converts AddActivityParams to a map for JSON submission.
 func (c *Client) buildActivityRequestBody(params AddActivityParams) map[string]interface{} {
 	body := make(map[string]interface{})
-	if params.Subject != nil {
-		body["subject"] = *params.Subject
+	if v, err := ParseStringField(params.Subject); err == nil && v != nil {
+		body["subject"] = *v
 	}
-	if params.Type != nil {
-		body["type"] = *params.Type
+	if v, err := ParseStringField(params.Type); err == nil && v != nil {
+		body["type"] = *v
 	}
-	if params.OwnerID != nil {
-		body["owner_id"] = *params.OwnerID
+	if v, err := ParseIntField(params.OwnerID); err == nil && v != nil {
+		body["owner_id"] = *v
 	}
-	if params.DealID != nil {
-		body["deal_id"] = *params.DealID
+	if v, err := ParseIntField(params.DealID); err == nil && v != nil {
+		body["deal_id"] = *v
 	}
-	if params.LeadID != nil {
-		body["lead_id"] = *params.LeadID
+	if v, err := ParseStringField(params.LeadID); err == nil && v != nil {
+		body["lead_id"] = *v
 	}
-	if params.PersonID != nil {
-		body["person_id"] = *params.PersonID
+	if v, err := ParseIntField(params.PersonID); err == nil && v != nil {
+		body["person_id"] = *v
 	}
-	if params.OrgID != nil {
-		body["org_id"] = *params.OrgID
+	if v, err := ParseIntField(params.OrgID); err == nil && v != nil {
+		body["org_id"] = *v
 	}
-	if params.ProjectID != nil {
-		body["project_id"] = *params.ProjectID
+	if v, err := ParseIntField(params.ProjectID); err == nil && v != nil {
+		body["project_id"] = *v
 	}
-	if params.DueDate != nil {
-		body["due_date"] = *params.DueDate
+	if v, err := ParseStringField(params.DueDate); err == nil && v != nil {
+		body["due_date"] = *v
 	}
-	if params.DueTime != nil {
-		body["due_time"] = *params.DueTime
+	if v, err := ParseStringField(params.DueTime); err == nil && v != nil {
+		body["due_time"] = *v
 	}
-	if params.Duration != nil {
-		body["duration"] = *params.Duration
+	if v, err := ParseStringField(params.Duration); err == nil && v != nil {
+		body["duration"] = *v
 	}
-	if params.Busy != nil {
-		body["busy"] = *params.Busy
+	if v, err := ParseBoolField(params.Busy); err == nil && v != nil {
+		body["busy"] = *v
 	}
-	if params.Done != nil {
-		body["done"] = *params.Done
+	if v, err := ParseBoolField(params.Done); err == nil && v != nil {
+		body["done"] = *v
 	}
 	if params.Location != nil {
 		body["location"] = params.Location
@@ -270,14 +293,14 @@ func (c *Client) buildActivityRequestBody(params AddActivityParams) map[string]i
 	if params.Participants != nil {
 		body["participants"] = params.Participants
 	}
-	if params.PublicDescription != nil {
-		body["public_description"] = *params.PublicDescription
+	if v, err := ParseStringField(params.PublicDescription); err == nil && v != nil {
+		body["public_description"] = *v
 	}
-	if params.Priority != nil {
-		body["priority"] = *params.Priority
+	if v, err := ParseIntField(params.Priority); err == nil && v != nil {
+		body["priority"] = *v
 	}
-	if params.Note != nil {
-		body["note"] = *params.Note
+	if v, err := ParseStringField(params.Note); err == nil && v != nil {
+		body["note"] = *v
 	}
 	return body
 }
@@ -285,44 +308,44 @@ func (c *Client) buildActivityRequestBody(params AddActivityParams) map[string]i
 // buildUpdateActivityRequestBody converts UpdateActivityParams to a map for JSON submission.
 func (c *Client) buildUpdateActivityRequestBody(params UpdateActivityParams) map[string]interface{} {
 	body := make(map[string]interface{})
-	if params.Subject != nil {
-		body["subject"] = *params.Subject
+	if v, err := ParseStringField(params.Subject); err == nil && v != nil {
+		body["subject"] = *v
 	}
-	if params.Type != nil {
-		body["type"] = *params.Type
+	if v, err := ParseStringField(params.Type); err == nil && v != nil {
+		body["type"] = *v
 	}
-	if params.OwnerID != nil {
-		body["owner_id"] = *params.OwnerID
+	if v, err := ParseIntField(params.OwnerID); err == nil && v != nil {
+		body["owner_id"] = *v
 	}
-	if params.DealID != nil {
-		body["deal_id"] = *params.DealID
+	if v, err := ParseIntField(params.DealID); err == nil && v != nil {
+		body["deal_id"] = *v
 	}
-	if params.LeadID != nil {
-		body["lead_id"] = *params.LeadID
+	if v, err := ParseStringField(params.LeadID); err == nil && v != nil {
+		body["lead_id"] = *v
 	}
-	if params.PersonID != nil {
-		body["person_id"] = *params.PersonID
+	if v, err := ParseIntField(params.PersonID); err == nil && v != nil {
+		body["person_id"] = *v
 	}
-	if params.OrgID != nil {
-		body["org_id"] = *params.OrgID
+	if v, err := ParseIntField(params.OrgID); err == nil && v != nil {
+		body["org_id"] = *v
 	}
-	if params.ProjectID != nil {
-		body["project_id"] = *params.ProjectID
+	if v, err := ParseIntField(params.ProjectID); err == nil && v != nil {
+		body["project_id"] = *v
 	}
-	if params.DueDate != nil {
-		body["due_date"] = *params.DueDate
+	if v, err := ParseStringField(params.DueDate); err == nil && v != nil {
+		body["due_date"] = *v
 	}
-	if params.DueTime != nil {
-		body["due_time"] = *params.DueTime
+	if v, err := ParseStringField(params.DueTime); err == nil && v != nil {
+		body["due_time"] = *v
 	}
-	if params.Duration != nil {
-		body["duration"] = *params.Duration
+	if v, err := ParseStringField(params.Duration); err == nil && v != nil {
+		body["duration"] = *v
 	}
-	if params.Busy != nil {
-		body["busy"] = *params.Busy
+	if v, err := ParseBoolField(params.Busy); err == nil && v != nil {
+		body["busy"] = *v
 	}
-	if params.Done != nil {
-		body["done"] = *params.Done
+	if v, err := ParseBoolField(params.Done); err == nil && v != nil {
+		body["done"] = *v
 	}
 	if params.Location != nil {
 		body["location"] = params.Location
@@ -330,14 +353,14 @@ func (c *Client) buildUpdateActivityRequestBody(params UpdateActivityParams) map
 	if params.Participants != nil {
 		body["participants"] = params.Participants
 	}
-	if params.PublicDescription != nil {
-		body["public_description"] = *params.PublicDescription
+	if v, err := ParseStringField(params.PublicDescription); err == nil && v != nil {
+		body["public_description"] = *v
 	}
-	if params.Priority != nil {
-		body["priority"] = *params.Priority
+	if v, err := ParseIntField(params.Priority); err == nil && v != nil {
+		body["priority"] = *v
 	}
-	if params.Note != nil {
-		body["note"] = *params.Note
+	if v, err := ParseStringField(params.Note); err == nil && v != nil {
+		body["note"] = *v
 	}
 	return body
 }
