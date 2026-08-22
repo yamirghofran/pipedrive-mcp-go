@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -48,10 +49,15 @@ type Config struct {
 
 // Load reads configuration from environment variables and applies defaults.
 func Load() (*Config, error) {
+	domain, err := normalizeDomain(os.Getenv("PIPEDRIVE_DOMAIN"))
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		// Required
 		PipedriveAPIToken: os.Getenv("PIPEDRIVE_API_TOKEN"),
-		PipedriveDomain:   os.Getenv("PIPEDRIVE_DOMAIN"),
+		PipedriveDomain:   domain,
 
 		// Transport defaults
 		MCPTransport: getEnvOrDefault("MCP_TRANSPORT", "stdio"),
@@ -144,6 +150,45 @@ func (c *Config) ListenAddr() string {
 }
 
 // --- helper functions ---
+
+// normalizeDomain cleans a user-provided Pipedrive domain value.
+//
+// It tolerates common copy-paste mistakes: surrounding whitespace, an
+// "http://" or "https://" scheme prefix, a trailing slash or full API URL,
+// and mixed case. A dot-less value is treated as a bare company subdomain
+// ("acme" becomes "acme.pipedrive.com"). It returns an error if no usable
+// domain remains.
+func normalizeDomain(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", fmt.Errorf("PIPEDRIVE_DOMAIN environment variable is required")
+	}
+
+	// Strip a URL scheme if one was pasted.
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	// Drop any path, query, or fragment component.
+	if i := strings.IndexAny(s, "/?#"); i >= 0 {
+		s = s[:i]
+	}
+	// Drop credentials if present (user@host).
+	if i := strings.LastIndex(s, "@"); i >= 0 {
+		s = s[i+1:]
+	}
+
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return "", fmt.Errorf("PIPEDRIVE_DOMAIN %q does not contain a valid domain", raw)
+	}
+
+	// A dot-less value is a bare company subdomain.
+	if !strings.Contains(s, ".") {
+		s += ".pipedrive.com"
+	}
+
+	return s, nil
+}
 
 func getEnvOrDefault(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {

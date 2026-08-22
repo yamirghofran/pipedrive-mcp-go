@@ -142,6 +142,7 @@ func (c *Client) get(ctx context.Context, endpoint string, params map[string]str
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		slog.Error("Pipedrive API connection failed", "method", "GET", "endpoint", endpoint, "error", sanitizeString(err.Error()))
 		return nil, &PipedriveError{
 			StatusCode: 0,
 			Message:    "failed to connect to Pipedrive API",
@@ -295,6 +296,7 @@ func (c *Client) getListV2(ctx context.Context, endpoint string, params map[stri
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		slog.Error("Pipedrive v2 API connection failed", "method", "GET", "endpoint", endpoint, "error", sanitizeString(err.Error()))
 		return nil, nil, &PipedriveError{
 			StatusCode: 0,
 			Message:    "failed to connect to Pipedrive API",
@@ -392,6 +394,7 @@ func (c *Client) doWrite(ctx context.Context, method, baseURL, endpoint string, 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		slog.Error("Pipedrive API connection failed", "method", method, "endpoint", endpoint, "error", sanitizeString(err.Error()))
 		return nil, &PipedriveError{
 			StatusCode: 0,
 			Message:    "failed to connect to Pipedrive API",
